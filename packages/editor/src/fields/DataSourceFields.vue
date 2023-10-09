@@ -3,13 +3,14 @@
     <MagicTable :data="model[name]" :columns="fieldColumns"></MagicTable>
 
     <div class="m-editor-data-source-fields-footer">
+      <TMagicButton size="small" :disabled="disabled" plain @click="newFromJsonHandler()">快速添加</TMagicButton>
       <TMagicButton size="small" type="primary" :disabled="disabled" plain @click="newHandler()">添加</TMagicButton>
     </div>
 
     <MFormDrawer
       ref="addDialog"
       label-width="80px"
-      :title="filedTitle"
+      :title="fieldTitle"
       :config="dataSourceFieldsConfig"
       :values="fieldValues"
       :parentValues="model[name]"
@@ -17,14 +18,25 @@
       :width="width"
       @submit="fieldChange"
     ></MFormDrawer>
+
+    <MFormDrawer
+      ref="addFromJsonDialog"
+      title="快速添加数据定义"
+      :config="jsonFromConfig"
+      :values="jsonFromValues"
+      :disabled="disabled"
+      :width="width"
+      @submit="addFromJsonFromChange"
+    ></MFormDrawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue';
 
-import { TMagicButton, tMagicMessageBox } from '@tmagic/design';
+import { TMagicButton, tMagicMessage, tMagicMessageBox } from '@tmagic/design';
 import { type FieldProps, type FormConfig, type FormState, MFormDrawer } from '@tmagic/form';
+import type { DataSchema } from '@tmagic/schema';
 import { MagicTable } from '@tmagic/table';
 
 import type { Services } from '@editor/type';
@@ -49,14 +61,15 @@ const emit = defineEmits(['change']);
 const services = inject<Services>('services');
 
 const addDialog = ref<InstanceType<typeof MFormDrawer>>();
+
 const fieldValues = ref<Record<string, any>>({});
-const filedTitle = ref('');
+const fieldTitle = ref('');
 
 const width = computed(() => globalThis.document.body.clientWidth - (services?.uiService.get('columnWidth').left || 0));
 
 const newHandler = () => {
   fieldValues.value = {};
-  filedTitle.value = '新增属性';
+  fieldTitle.value = '新增属性';
   addDialog.value?.show();
 };
 
@@ -100,7 +113,7 @@ const fieldColumns = [
             ...row,
             index,
           };
-          filedTitle.value = `编辑${row.title}`;
+          fieldTitle.value = `编辑${row.title}`;
           addDialog.value?.show();
         },
       },
@@ -171,11 +184,14 @@ const dataSourceFieldsConfig: FormConfig = [
   {
     name: 'defaultValue',
     text: '默认值',
+    height: '200px',
+    parse: true,
     type: (mForm: FormState | undefined, { model }: any) => {
       if (model.type === 'number') return 'number';
       if (model.type === 'boolean') return 'select';
+      if (model.type === 'string') return 'text';
 
-      return 'text';
+      return 'vs-code';
     },
     options: [
       { text: 'true', value: true },
@@ -192,7 +208,79 @@ const dataSourceFieldsConfig: FormConfig = [
     name: 'fields',
     type: 'data-source-fields',
     defaultValue: [],
-    display: (formState: FormState | undefined, { model }: any) => model.type === 'object',
+    display: (formState: FormState | undefined, { model }: any) => model.type === 'object' || model.type === 'array',
   },
 ];
+
+const addFromJsonDialog = ref<InstanceType<typeof MFormDrawer>>();
+const jsonFromConfig: FormConfig = [
+  {
+    name: 'data',
+    type: 'vs-code',
+    labelWidth: '0',
+    language: 'json',
+    height: '600px',
+    options: inject('codeOptions', {}),
+  },
+];
+
+const jsonFromValues = ref({
+  data: {},
+});
+
+const newFromJsonHandler = () => {
+  addFromJsonDialog.value?.show();
+};
+
+const getValueType = (value: any) => {
+  if (Array.isArray(value)) return 'array';
+  if (value === null) return 'null';
+  if (typeof value === 'object') return 'object';
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'string') return 'string';
+
+  return 'any';
+};
+
+const getFieldsConfig = (value: any) => {
+  if (!value || typeof value !== 'object') throw new Error('数据格式错误');
+
+  const fields: DataSchema[] = [];
+  Object.entries(value).forEach(([key, value]) => {
+    const type = getValueType(value);
+
+    let childFields: DataSchema[] = [];
+    if (Array.isArray(value) && value.length > 0) {
+      childFields = getFieldsConfig(value[0]);
+    } else if (type === 'object') {
+      childFields = getFieldsConfig(value);
+    }
+
+    fields.push({
+      name: key,
+      title: key,
+      type,
+      defaultValue: value,
+      fields: childFields,
+    });
+  });
+
+  return fields;
+};
+
+const addFromJsonFromChange = ({ data }: { data: string }) => {
+  console.log(data);
+  try {
+    const value = JSON.parse(data);
+
+    props.model[props.name] = getFieldsConfig(value);
+
+    addFromJsonDialog.value?.hide();
+
+    emit('change', props.model[props.name]);
+  } catch (e: any) {
+    tMagicMessage.error(e.message);
+  }
+};
 </script>
