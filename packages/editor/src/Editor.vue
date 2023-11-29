@@ -21,8 +21,12 @@
             <slot name="layer-panel-header"></slot>
           </template>
 
-          <template #layer-node-content="{ node, data }">
-            <slot name="layer-node-content" :data="data" :node="node"></slot>
+          <template #layer-node-content="{ data }">
+            <slot name="layer-node-content" :data="data"></slot>
+          </template>
+
+          <template #layer-node-tool="{ data }">
+            <slot name="layer-node-tool" :data="data"></slot>
           </template>
 
           <template #component-list-panel-header>
@@ -39,6 +43,10 @@
 
           <template #code-block-panel-tool="{ id, data }">
             <slot name="code-block-panel-tool" :id="id" :data="data"></slot>
+          </template>
+
+          <template #data-source-panel-tool="{ data }">
+            <slot name="data-source-panel-tool" :data="data"></slot>
           </template>
         </Sidebar>
       </slot>
@@ -83,7 +91,7 @@
 <script lang="ts" setup>
 import { provide, reactive } from 'vue';
 
-import { MApp } from '@tmagic/schema';
+import type { MApp } from '@tmagic/schema';
 
 import Framework from './layouts/Framework.vue';
 import TMagicNavMenu from './layouts/NavMenu.vue';
@@ -94,7 +102,7 @@ import codeBlockService from './services/codeBlock';
 import componentListService from './services/componentList';
 import dataSourceService from './services/dataSource';
 import depService from './services/dep';
-import editorService from './services/editor';
+import editorService, { type EditorService } from './services/editor';
 import eventsService from './services/events';
 import historyService from './services/history';
 import keybindingService from './services/keybinding';
@@ -104,7 +112,17 @@ import uiService from './services/ui';
 import keybindingConfig from './utils/keybinding-config';
 import { defaultEditorProps, EditorProps } from './editorProps';
 import { initServiceEvents, initServiceState } from './initService';
-import type { Services } from './type';
+import type { FrameworkSlots, PropsPanelSlots, Services, SidebarSlots, WorkspaceSlots } from './type';
+
+defineSlots<
+  FrameworkSlots &
+    WorkspaceSlots &
+    SidebarSlots &
+    PropsPanelSlots & {
+      workspace(props: { editorService: EditorService }): any;
+      'workspace-content'(props: { editorService: EditorService }): any;
+    }
+>();
 
 defineOptions({
   name: 'MEditor',

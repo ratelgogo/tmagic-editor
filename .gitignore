@@ -30,3 +30,5 @@ coverage
 auto-imports.d.ts
 components.d.ts
 docs/.vitepress/cache
+
+pnpm-lock.yaml

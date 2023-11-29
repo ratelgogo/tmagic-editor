@@ -1,5 +1,5 @@
 <template>
-  <div class="m-editor" ref="content">
+  <div class="m-editor" ref="content" style="min-width: 180px">
     <slot name="header"></slot>
 
     <slot name="nav"></slot>
@@ -12,6 +12,7 @@
 
     <SplitView
       v-else
+      ref="splitView"
       class="m-editor-content"
       left-class="m-editor-framework-left"
       center-class="m-editor-framework-center"
@@ -20,6 +21,7 @@
       v-model:right="columnWidth.right"
       :min-left="65"
       :min-right="20"
+      :min-center="100"
       @change="columnWidthChange"
     >
       <template #left>
@@ -51,11 +53,13 @@ import { computed, inject, ref, watch } from 'vue';
 import { TMagicScrollbar } from '@tmagic/design';
 
 import SplitView from '@editor/components/SplitView.vue';
-import type { GetColumnWidth, Services } from '@editor/type';
+import type { FrameworkSlots, GetColumnWidth, Services } from '@editor/type';
 import { getConfig } from '@editor/utils/config';
 
 import AddPageBox from './AddPageBox.vue';
 import CodeEditor from './CodeEditor.vue';
+
+defineSlots<FrameworkSlots>();
 
 defineOptions({
   name: 'MEditorFramework',
@@ -68,6 +72,7 @@ const codeOptions = inject('codeOptions', {});
 const { editorService, uiService } = inject<Services>('services') || {};
 
 const content = ref<HTMLDivElement>();
+const splitView = ref<InstanceType<typeof SplitView>>();
 
 const root = computed(() => editorService?.get('root'));
 
@@ -77,8 +82,12 @@ const showSrc = computed(() => uiService?.get('showSrc'));
 const LEFT_COLUMN_WIDTH_STORAGE_KEY = '$MagicEditorLeftColumnWidthData';
 const RIGHT_COLUMN_WIDTH_STORAGE_KEY = '$MagicEditorRightColumnWidthData';
 
-const leftColumnWidthCacheData = Number(globalThis.localStorage.getItem(LEFT_COLUMN_WIDTH_STORAGE_KEY));
-const RightColumnWidthCacheData = Number(globalThis.localStorage.getItem(RIGHT_COLUMN_WIDTH_STORAGE_KEY));
+const getLeftColumnWidthCacheData = () =>
+  Number(globalThis.localStorage.getItem(LEFT_COLUMN_WIDTH_STORAGE_KEY)) || DEFAULT_LEFT_COLUMN_WIDTH;
+
+const leftColumnWidthCacheData = getLeftColumnWidthCacheData();
+const RightColumnWidthCacheData =
+  Number(globalThis.localStorage.getItem(RIGHT_COLUMN_WIDTH_STORAGE_KEY)) || DEFAULT_RIGHT_COLUMN_WIDTH;
 
 const columnWidth = ref<Partial<GetColumnWidth>>({
   left: leftColumnWidthCacheData,
@@ -87,24 +96,9 @@ const columnWidth = ref<Partial<GetColumnWidth>>({
 });
 
 watch(
-  pageLength,
-  (length) => {
-    const left = columnWidth.value.left || DEFAULT_LEFT_COLUMN_WIDTH;
-
-    columnWidth.value.left = left;
-
-    const container = content.value || document.body;
-
-    if (length <= 0) {
-      columnWidth.value.right = undefined;
-      columnWidth.value.center = container.clientWidth - left;
-    } else {
-      const right = columnWidth.value.right || RightColumnWidthCacheData || DEFAULT_RIGHT_COLUMN_WIDTH;
-      columnWidth.value.right = right;
-      columnWidth.value.center = container.clientWidth - left - right;
-    }
-
-    uiService?.set('columnWidth', columnWidth.value as GetColumnWidth);
+  [pageLength, splitView],
+  () => {
+    splitView.value?.updateWidth();
   },
   {
     immediate: true,
@@ -123,6 +117,13 @@ watch(
   () => columnWidth.value.left,
   (left) => {
     globalThis.localStorage.setItem(LEFT_COLUMN_WIDTH_STORAGE_KEY, `${left}`);
+  },
+);
+
+watch(
+  () => uiService?.get('hideSlideBar'),
+  (hideSlideBar) => {
+    columnWidth.value.left = hideSlideBar ? 0 : getLeftColumnWidthCacheData();
   },
 );
 

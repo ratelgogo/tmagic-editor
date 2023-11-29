@@ -18,20 +18,29 @@
 export type Method = 'get' | 'GET' | 'delete' | 'DELETE' | 'post' | 'POST' | 'put' | 'PUT';
 
 export interface HttpOptions {
+  /** 请求链接 */
   url: string;
+  /** query参数 */
   params?: Record<string, string>;
+  /** body数据 */
   data?: Record<string, any>;
+  /** 请求头 */
   headers?: Record<string, string>;
+  /** 请求方法 GET/POST */
   method?: Method;
   [key: string]: any;
 }
 
-export type RequestFunction = (options: HttpOptions) => Promise<any>;
+export type RequestFunction = <T = any>(options: HttpOptions) => Promise<T>;
 
 export interface AppCore {
+  /** 页面配置描述 */
   dsl?: MApp;
-  platform?: string;
-  jsEngine?: string;
+  /** 允许平台，editor: 编辑器中，mobile: 手机端，tv: 电视端, pc: 电脑端 */
+  platform?: 'editor' | 'mobile' | 'tv' | 'pc' | string;
+  /** 代码运行环境 */
+  jsEngine?: 'browser' | 'hippy' | 'nodejs' | string;
+  /** 网络请求函数 */
   request?: RequestFunction;
   [key: string]: any;
 }
@@ -55,7 +64,7 @@ export enum ActionType {
 }
 
 export interface DataSourceDeps {
-  [dataSourceId: string | number]: Dep;
+  [dataSourceId: string | number]: DepData;
 }
 
 /** 事件类型(已废弃，后续不建议继续使用) */
@@ -201,9 +210,15 @@ export interface DataSchema {
 }
 
 export interface MockSchema {
+  /** 名称 */
   title: string;
+  /** 详细描述 */
   description?: string;
+  /** 是否启用，用于编辑器以外的runtime */
   enable: boolean;
+  /** 编辑器中使用使用此条数据，仅用于编辑器runtime中 */
+  useInEditor: boolean;
+  /** mock数据 */
   data: Record<string | number, any>;
 }
 
@@ -226,10 +241,17 @@ export interface DataSourceSchema {
   [key: string]: any;
 }
 
-export interface Dep {
+export interface DepData {
   [nodeId: Id]: {
     /** 组件名称 */
     name: string;
     keys: (string | number)[];
   };
 }
+
+export type HookData = {
+  /** 代码块id */
+  codeId: Id;
+  /** 参数 */
+  params?: object;
+};

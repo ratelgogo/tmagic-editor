@@ -206,6 +206,7 @@ export const eventTabConfig: TabPaneConfig = {
     {
       name: 'events',
       src: 'component',
+      labelWidth: '100px',
       type: 'event-select',
     },
   ],
@@ -237,6 +238,8 @@ export const displayTabConfig: TabPaneConfig = {
     {
       type: 'groupList',
       name: 'displayConds',
+      titlePrefix: '条件组',
+      expandAll: true,
       items: [
         {
           type: 'table',
@@ -245,6 +248,7 @@ export const displayTabConfig: TabPaneConfig = {
             {
               type: 'data-source-field-select',
               name: 'field',
+              value: 'key',
               label: '字段',
             },
             {

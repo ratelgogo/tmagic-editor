@@ -1,5 +1,5 @@
 {
-  "version": "1.3.0-beta.2",
+  "version": "1.3.4",
   "name": "@tmagic/schema",
   "type": "module",
   "sideEffects": false,
@@ -8,6 +8,7 @@
   "types": "types/index.d.ts",
   "exports": {
     ".": {
+      "types": "./types/index.d.ts",
       "import": "./dist/tmagic-schema.js",
       "require": "./dist/tmagic-schema.umd.cjs"
     },

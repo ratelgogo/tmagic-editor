@@ -44,13 +44,16 @@
 import { computed, inject, ref } from 'vue';
 import { Close, Edit, View } from '@element-plus/icons-vue';
 
+import { DepTargetType } from '@tmagic/dep';
 import { tMagicMessage, tMagicMessageBox, TMagicTooltip, TMagicTree } from '@tmagic/design';
 import type { Id } from '@tmagic/schema';
 
 import Icon from '@editor/components/Icon.vue';
 import AppManageIcon from '@editor/icons/AppManageIcon.vue';
 import CodeIcon from '@editor/icons/CodeIcon.vue';
-import { CodeDeleteErrorType, CodeDslItem, DepTargetType, Services } from '@editor/type';
+import { type CodeBlockListSlots, CodeDeleteErrorType, type CodeDslItem, type Services } from '@editor/type';
+
+defineSlots<CodeBlockListSlots>();
 
 defineOptions({
   name: 'MEditorCodeBlockList',

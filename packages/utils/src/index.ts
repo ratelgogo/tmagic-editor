@@ -281,7 +281,7 @@ export const compiledNode = (
         return accumulator;
       }
 
-      if (Object.prototype.toString.call(accumulator) === '[object Object]' || Array.isArray(accumulator)) {
+      if (isObject(accumulator) || Array.isArray(accumulator)) {
         return accumulator[currentValue];
       }
 
@@ -299,10 +299,10 @@ export const compiledNode = (
 export const compiledCond = (op: string, fieldValue: any, value: any, range: [number, number]): boolean => {
   switch (op) {
     case 'is':
-      if (!fieldValue) return false;
+      if (fieldValue !== value) return false;
       break;
     case 'not':
-      if (fieldValue) return false;
+      if (fieldValue === value) return false;
       break;
     case '=':
       if (fieldValue !== value) return false;
@@ -345,25 +345,76 @@ export const getDefaultValueFromFields = (fields: DataSchema[]) => {
   const data: Record<string, any> = {};
 
   const defaultValue: Record<string, any> = {
-    string: '',
+    string: undefined,
     object: {},
     array: [],
-    boolean: false,
-    number: 0,
+    boolean: undefined,
+    number: undefined,
     null: null,
     any: undefined,
   };
 
   fields.forEach((field) => {
     if (typeof field.defaultValue !== 'undefined') {
+      if (field.type === 'array' && !Array.isArray(field.defaultValue)) {
+        data[field.name] = defaultValue.array;
+        return;
+      }
+
+      if (field.type === 'object' && !isObject(field.defaultValue)) {
+        if (typeof field.defaultValue === 'string') {
+          try {
+            data[field.name] = JSON.parse(field.defaultValue);
+          } catch (e) {
+            data[field.name] = defaultValue.object;
+          }
+          return;
+        }
+
+        data[field.name] = defaultValue.object;
+        return;
+      }
+
       data[field.name] = field.defaultValue;
-    } else if (field.type === 'object') {
-      data[field.name] = field.fields ? getDefaultValueFromFields(field.fields) : {};
-    } else if (field.type) {
-      data[field.name] = defaultValue[field.type];
-    } else {
-      data[field.name] = undefined;
+      return;
     }
+
+    if (field.type === 'object') {
+      data[field.name] = field.fields ? getDefaultValueFromFields(field.fields) : defaultValue.object;
+      return;
+    }
+
+    if (field.type) {
+      data[field.name] = defaultValue[field.type];
+      return;
+    }
+
+    data[field.name] = undefined;
   });
+
   return data;
+};
+
+export const DATA_SOURCE_FIELDS_SELECT_VALUE_PREFIX = 'ds-field::';
+
+export const getKeys = Object.keys as <T extends object>(obj: T) => Array<keyof T>;
+
+export const calculatePercentage = (value: number, percentageStr: string) => {
+  const percentage = globalThis.parseFloat(percentageStr) / 100; // 先将百分比字符串转换为浮点数，并除以100转换为小数
+  const result = value * percentage;
+  return result;
+};
+
+export const isPercentage = (value: number | string) => /^(\d+)(\.\d+)?%$/.test(`${value}`);
+
+export const convertToNumber = (value: number | string, parentValue = 0) => {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  if (typeof value === 'string' && isPercentage(value)) {
+    return calculatePercentage(parentValue, value);
+  }
+
+  return parseFloat(value);
 };

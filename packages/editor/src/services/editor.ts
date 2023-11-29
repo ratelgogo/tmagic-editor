@@ -36,6 +36,7 @@ import {
   getInitPositionStyle,
   getNodeIndex,
   isFixed,
+  setChilrenLayout,
   setLayout,
 } from '@editor/utils/editor';
 import { beforePaste, getAddParent } from '@editor/utils/operator';
@@ -80,6 +81,7 @@ class Editor extends BaseService {
         'undo',
         'redo',
         'highlight',
+        'dragTo',
       ],
       // 需要注意循环依赖问题，如果函数间有相互调用的话，不能设置为串行调用
       ['select', 'update', 'moveLayer'],
@@ -253,7 +255,7 @@ class Editor extends BaseService {
 
     if (!parent) return node;
 
-    const index = getNodeIndex(node, parent);
+    const index = getNodeIndex(node.id, parent);
 
     const nextNode = parent.items[index + 1] || parent.items[0];
 
@@ -270,7 +272,7 @@ class Editor extends BaseService {
     if (!page) throw new Error('page不能为空');
     if (!root) throw new Error('root不能为空');
 
-    const index = getNodeIndex(page, root);
+    const index = getNodeIndex(page.id, root);
 
     const nextPage = root.items[index + 1] || root.items[0];
 
@@ -418,7 +420,7 @@ class Editor extends BaseService {
 
     if (!parent || !curNode) throw new Error('找不要删除的节点');
 
-    const index = getNodeIndex(curNode, parent);
+    const index = getNodeIndex(curNode.id, parent);
 
     if (typeof index !== 'number' || index === -1) throw new Error('找不要删除的节点');
 
@@ -503,14 +505,14 @@ class Editor extends BaseService {
     if (!parent) throw new Error('获取不到父级节点');
 
     const parentNodeItems = parent.items;
-    const index = getNodeIndex(newConfig, parent);
+    const index = getNodeIndex(newConfig.id, parent);
 
     if (!parentNodeItems || typeof index === 'undefined' || index === -1) throw new Error('更新的节点未找到');
 
     const newLayout = await this.getLayout(newConfig);
     const layout = await this.getLayout(node);
-    if (newLayout !== layout) {
-      newConfig = setLayout(newConfig, newLayout);
+    if (Array.isArray(newConfig.items) && newLayout !== layout) {
+      newConfig = setChilrenLayout(newConfig as MContainer, newLayout);
     }
 
     parentNodeItems[index] = newConfig;
@@ -546,7 +548,9 @@ class Editor extends BaseService {
 
     const newNodes = await Promise.all(nodes.map((node) => this.doUpdate(node)));
 
-    this.pushHistoryState();
+    if (newNodes[0]?.type !== NodeType.ROOT) {
+      this.pushHistoryState();
+    }
 
     this.emit('update', newNodes);
     return Array.isArray(config) ? newNodes : newNodes[0];
@@ -737,7 +741,7 @@ class Editor extends BaseService {
 
     const stage = this.get('stage');
     if (root && node && parent && stage) {
-      const index = getNodeIndex(node, parent);
+      const index = getNodeIndex(node.id, parent);
       parent.items?.splice(index, 1);
 
       await stage.remove({ id: node.id, parentId: parent.id, root });
@@ -767,6 +771,53 @@ class Editor extends BaseService {
 
       return newConfig;
     }
+  }
+
+  public async dragTo(config: MNode, targetParent: MContainer, targetIndex: number) {
+    if (!targetParent || !Array.isArray(targetParent.items)) return;
+
+    const { parent, node: curNode } = this.getNodeInfo(config.id, false);
+    if (!parent || !curNode) throw new Error('找不要删除的节点');
+
+    const index = getNodeIndex(curNode.id, parent);
+
+    if (typeof index !== 'number' || index === -1) throw new Error('找不要删除的节点');
+
+    if (parent.id === targetParent.id) {
+      if (index === targetIndex) return;
+
+      if (index < targetIndex) {
+        targetIndex -= 1;
+      }
+    }
+
+    const layout = await this.getLayout(parent);
+    const newLayout = await this.getLayout(targetParent);
+
+    if (newLayout !== layout) {
+      setLayout(config, newLayout);
+    }
+
+    parent.items?.splice(index, 1);
+
+    targetParent.items?.splice(targetIndex, 0, config);
+
+    const page = this.get('page');
+    const root = this.get('root');
+    const stage = this.get('stage');
+
+    if (stage && page && root) {
+      stage.update({
+        config: cloneDeep(page),
+        parentId: root.id,
+        root: cloneDeep(root),
+      });
+    }
+
+    this.addModifiedNodeId(config.id);
+    this.addModifiedNodeId(parent.id);
+
+    this.pushHistoryState();
   }
 
   /**

@@ -33,13 +33,14 @@
 import { computed, inject, markRaw, nextTick, onMounted, onUnmounted, ref, toRaw, watch, watchEffect } from 'vue';
 import { cloneDeep } from 'lodash-es';
 
-import type { MContainer } from '@tmagic/schema';
+import type { MApp, MContainer } from '@tmagic/schema';
 import StageCore, { calcValueByFontsize, getOffset, Runtime } from '@tmagic/stage';
 
 import ScrollViewer from '@editor/components/ScrollViewer.vue';
 import { useStage } from '@editor/hooks/use-stage';
-import { Layout, MenuButton, MenuComponent, Services, StageOptions } from '@editor/type';
+import { DragType, Layout, type MenuButton, type MenuComponent, type Services, type StageOptions } from '@editor/type';
 import { getConfig } from '@editor/utils/config';
+import { KeyBindingContainerKey } from '@editor/utils/keybinding-config';
 
 import NodeListMenu from './NodeListMenu.vue';
 import ViewerMenu from './ViewerMenu.vue';
@@ -104,12 +105,6 @@ watch(zoom, (zoom) => {
   stage.setZoom(zoom);
 });
 
-watch(root, (root) => {
-  if (runtime && root) {
-    runtime.updateRootConfig?.(cloneDeep(toRaw(root)));
-  }
-});
-
 watch(page, (page) => {
   if (runtime && page) {
     runtime.updatePageId?.(page.id);
@@ -118,6 +113,14 @@ watch(page, (page) => {
     });
   }
 });
+
+const rootChangeHandler = (root: MApp) => {
+  if (runtime && root) {
+    runtime.updateRootConfig?.(cloneDeep(toRaw(root)));
+  }
+};
+
+services?.editorService.on('root-change', rootChangeHandler);
 
 const resizeObserver = new ResizeObserver((entries) => {
   for (const { contentRect } of entries) {
@@ -131,7 +134,7 @@ const resizeObserver = new ResizeObserver((entries) => {
 onMounted(() => {
   if (stageWrap.value?.container) {
     resizeObserver.observe(stageWrap.value.container);
-    services?.keybindingService.registeEl('stage', stageWrap.value.container);
+    services?.keybindingService.registeEl(KeyBindingContainerKey.STAGE, stageWrap.value.container);
   }
 });
 
@@ -140,7 +143,10 @@ onUnmounted(() => {
   resizeObserver.disconnect();
   services?.editorService.set('stage', null);
   services?.keybindingService.unregisteEl('stage');
+  services?.editorService.off('root-change', rootChangeHandler);
 });
+
+const parseDSL = getConfig('parseDSL');
 
 const contextmenuHandler = (e: MouseEvent) => {
   e.preventDefault();
@@ -148,12 +154,22 @@ const contextmenuHandler = (e: MouseEvent) => {
 };
 
 const dragoverHandler = (e: DragEvent) => {
-  e.preventDefault();
   if (!e.dataTransfer) return;
+  e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
 };
 
 const dropHandler = async (e: DragEvent) => {
+  if (!e.dataTransfer) return;
+
+  const data = e.dataTransfer.getData('text/json');
+
+  if (!data) return;
+
+  const config = parseDSL(`(${data})`);
+
+  if (!config || config.dragType !== DragType.COMPONENT_LIST) return;
+
   e.preventDefault();
 
   const doc = stage?.renderer.contentWindow?.document;
@@ -164,28 +180,22 @@ const dropHandler = async (e: DragEvent) => {
     parent = services?.editorService.getNodeById(parentEl.id, false) as MContainer;
   }
 
-  if (e.dataTransfer && parent && stageContainer.value && stage) {
-    const parseDSL = getConfig('parseDSL');
-
-    const data = e.dataTransfer.getData('text/json');
-
-    if (!data) return;
-
-    const config = parseDSL(`(${data})`);
-
-    if (!config) return;
-
+  if (parent && stageContainer.value && stage) {
     const layout = await services?.editorService.getLayout(parent);
 
     const containerRect = stageContainer.value.getBoundingClientRect();
     const { scrollTop, scrollLeft } = stage.mask;
-    const { style = {} } = config;
+    const { style = {} } = config.data;
 
     let top = 0;
     let left = 0;
     let position = 'relative';
 
-    if (layout === Layout.ABSOLUTE) {
+    if (style.position === 'fixed') {
+      position = 'fixed';
+      top = e.clientY - containerRect.top;
+      left = e.clientX - containerRect.left;
+    } else if (layout === Layout.ABSOLUTE) {
       position = 'absolute';
       top = e.clientY - containerRect.top + scrollTop;
       left = e.clientX - containerRect.left + scrollLeft;
@@ -197,16 +207,16 @@ const dropHandler = async (e: DragEvent) => {
       }
     }
 
-    config.style = {
+    config.data.style = {
       ...style,
       position,
       top: top / zoom.value,
       left: left / zoom.value,
     };
 
-    config.inputEvent = e;
+    config.data.inputEvent = e;
 
-    services?.editorService.add(config, parent);
+    services?.editorService.add(config.data, parent);
   }
 };
 </script>

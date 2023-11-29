@@ -26,7 +26,7 @@
             <TMagicTooltip v-if="editable" effect="dark" content="删除" placement="bottom">
               <Icon :icon="Close" class="edit-icon" @click.stop="removeHandler(`${data.id}`)"></Icon>
             </TMagicTooltip>
-            <slot name="data-source-panel-tool" :id="data.id" :data="data.codeBlockContent"></slot>
+            <slot name="data-source-panel-tool" :data="data"></slot>
           </div>
         </div>
       </div>
@@ -38,11 +38,14 @@
 import { computed, inject, ref } from 'vue';
 import { Aim, Close, Coin, Edit, View } from '@element-plus/icons-vue';
 
+import { DepTargetType } from '@tmagic/dep';
 import { tMagicMessageBox, TMagicTooltip, TMagicTree } from '@tmagic/design';
-import { Dep, Id } from '@tmagic/schema';
+import { DepData, Id } from '@tmagic/schema';
 
 import Icon from '@editor/components/Icon.vue';
-import { DepTargetType, Services } from '@editor/type';
+import type { DataSourceListSlots, Services } from '@editor/type';
+
+defineSlots<DataSourceListSlots>();
 
 defineOptions({
   name: 'MEditorDataSourceList',
@@ -63,38 +66,47 @@ const dsDep = computed(() => depService?.getTargets(DepTargetType.DATA_SOURCE) |
 const dsMethodDep = computed(() => depService?.getTargets(DepTargetType.DATA_SOURCE_METHOD) || {});
 const dsCondDep = computed(() => depService?.getTargets(DepTargetType.DATA_SOURCE_COND) || {});
 
-const getKeyTreeConfig = (dep: Dep[string], type?: string) =>
+const getKeyTreeConfig = (dep: DepData[string], type?: string) =>
   dep.keys.map((key) => ({ name: key, id: key, type: 'key', isMethod: type === 'method', isCond: type === 'cond' }));
 
-const getNodeTreeConfig = (id: string, dep: Dep[string], type?: string) => ({
+const getNodeTreeConfig = (id: string, dep: DepData[string], type?: string) => ({
   name: dep.name,
   type: 'node',
   id,
   children: getKeyTreeConfig(dep, type),
 });
 
+/**
+ * 生成tree中依赖节点的数据
+ * @param children 节点
+ * @param deps 依赖
+ * @param type 依赖类型
+ */
+const mergeChildren = (children: any[], deps: DepData, type?: string) => {
+  Object.entries(deps).forEach(([id, dep]) => {
+    // 已经生成过的节点
+    const nodeItem = children.find((item) => item.id === id);
+    // 节点存在，则追加依赖的key
+    if (nodeItem) {
+      nodeItem.children = nodeItem.children.concat(getKeyTreeConfig(dep, type));
+    } else {
+      // 节点不存在，则生成
+      children.push(getNodeTreeConfig(id, dep, type));
+    }
+  });
+};
+
 const list = computed(() =>
   dataSources.value.map((ds) => {
-    const dsDeps = dsDep.value[ds.id].deps;
-    const dsMethodDeps = dsMethodDep.value[ds.id].deps;
-    const dsCondDeps = dsCondDep.value[ds.id].deps;
+    const dsDeps = dsDep.value[ds.id]?.deps || {};
+    const dsMethodDeps = dsMethodDep.value[ds.id]?.deps || {};
+    const dsCondDeps = dsCondDep.value[ds.id]?.deps || {};
 
     const children: any[] = [];
-
-    const mergeChildren = (deps: Dep, type?: string) => {
-      Object.entries(deps).forEach(([id, dep]) => {
-        const nodeItem = children.find((item) => item.id === id);
-        if (nodeItem) {
-          nodeItem.children = nodeItem.children.concat(getKeyTreeConfig(dep, type));
-        } else {
-          children.push(getNodeTreeConfig(id, dep, type));
-        }
-      });
-    };
-
-    mergeChildren(dsDeps);
-    mergeChildren(dsMethodDeps, 'method');
-    mergeChildren(dsCondDeps, 'cond');
+    // 数据源依赖分为三种类型：key/node、method、cond，是分开存储，这里将其合并展示
+    mergeChildren(children, dsDeps);
+    mergeChildren(children, dsMethodDeps, 'method');
+    mergeChildren(children, dsCondDeps, 'cond');
 
     return {
       id: ds.id,
@@ -138,7 +150,6 @@ const tree = ref<InstanceType<typeof TMagicTree>>();
 
 defineExpose({
   filter(val: string) {
-    debugger;
     tree.value?.filter(val);
   },
 });

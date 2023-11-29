@@ -72,19 +72,19 @@ export interface FormItem {
   /** 字段名 */
   name?: string | number;
   /** 额外的提示信息，和 help 类似，当提示文案同时出现时，可以使用这个。 */
-  extra?: string | FilterFunction;
+  extra?: string | FilterFunction<string>;
   /** 配置提示信息 */
-  tooltip?: string | FilterFunction;
+  tooltip?: string | FilterFunction<string>;
   /** 是否置灰 */
   disabled?: boolean | FilterFunction;
   /** 使用表单中的值作为key，例如配置了text，则使用model.text作为key */
   key?: string;
   /** 是否显示 */
-  display?: boolean | 'expand' | FilterFunction;
+  display?: boolean | 'expand' | FilterFunction<boolean | 'expand'>;
   /** 值发生改变时调用的方法 */
   onChange?: OnChangeHandler;
   /** label 标签的文本 */
-  text?: string | FilterFunction;
+  text?: string | FilterFunction<string>;
   /** 右侧感叹号 */
   tip?: string;
 
@@ -158,7 +158,7 @@ export type TypeFunction = (
   },
 ) => string;
 
-export type FilterFunction = (
+export type FilterFunction<T = boolean> = (
   mForm: FormState | undefined,
   data: {
     model: Record<any, any>;
@@ -168,7 +168,7 @@ export type FilterFunction = (
     prop: string;
     config: any;
   },
-) => boolean;
+) => T;
 
 type OnChangeHandler = (
   mForm: FormState | undefined,
@@ -527,7 +527,12 @@ export interface LinkConfig extends FormItem {
 export interface CascaderConfig extends FormItem, Input {
   type: 'cascader';
   remote?: boolean;
+  /** 在选中节点改变时，是否返回由该节点所在的各级菜单的值所组成的数组，若设置 false，则只返回该节点的值，默认 true */
+  emitPath?: boolean;
+  /** 是否多选，默认 false */
   multiple?: boolean;
+  /** 是否严格的遵守父子节点不互相关联，默认 false */
+  checkStrictly?: boolean;
   options?:
     | ((
         mForm: FormState | undefined,
@@ -544,12 +549,6 @@ export interface CascaderConfig extends FormItem, Input {
     body?: Record<string, any> | RemoteSelectOptionBodyFunction;
     root: 'string';
     item: (optionsData: Record<string, any>) => CascaderOption[];
-  };
-  add?: {
-    action: {
-      method: 'post' | 'get';
-      body?: Record<string, any>;
-    };
   };
 }
 
@@ -668,7 +667,7 @@ export interface TableConfig extends FormItem {
   /** 是否显示全屏按钮 */
   enableFullscreen?: boolean;
   fixed?: boolean;
-  itemExtra?: string | FilterFunction;
+  itemExtra?: string | FilterFunction<string>;
   rowKey?: string;
 }
 
@@ -681,8 +680,8 @@ export interface GroupListConfig extends FormItem {
   tableItems?: FormConfig;
   titleKey?: string;
   titlePrefix?: string;
-  title?: string | FilterFunction;
-  itemExtra?: string | FilterFunction;
+  title?: string | FilterFunction<string>;
+  itemExtra?: string | FilterFunction<string>;
   expandAll?: boolean;
   addable?: (mForm: FormState | undefined, data: any) => boolean | 'undefined' | boolean;
   defaultAdd?: (mForm: FormState | undefined, data: any) => any;

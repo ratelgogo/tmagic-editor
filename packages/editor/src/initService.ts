@@ -1,20 +1,21 @@
-import { onUnmounted, toRaw, watch } from 'vue';
+import { onUnmounted, reactive, toRaw, watch } from 'vue';
 import { cloneDeep } from 'lodash-es';
 
 import type { EventOption } from '@tmagic/core';
-import type { CodeBlockContent, DataSourceSchema, Id, MApp, MNode, MPage } from '@tmagic/schema';
-import { getNodes } from '@tmagic/utils';
-
-import PropsPanel from './layouts/PropsPanel.vue';
-import type { Target } from './services/dep';
+import type { Target } from '@tmagic/dep';
 import {
   createCodeBlockTarget,
   createDataSourceCondTarget,
   createDataSourceMethodTarget,
   createDataSourceTarget,
-} from './utils/dep';
+  DepTargetType,
+} from '@tmagic/dep';
+import type { CodeBlockContent, DataSourceSchema, Id, MApp, MNode, MPage } from '@tmagic/schema';
+import { getNodes } from '@tmagic/utils';
+
+import PropsPanel from './layouts/PropsPanel.vue';
 import { EditorProps } from './editorProps';
-import { DepTargetType, Services } from './type';
+import { Services } from './type';
 
 export declare type LooseRequired<T> = {
   [P in string & keyof T]: T[P];
@@ -270,32 +271,12 @@ export const initServiceEvents = (
   depService.on('collected', collectedHandler);
 
   const initDataSourceDepTarget = (ds: DataSourceSchema) => {
-    depService.addTarget(createDataSourceTarget(ds.id));
-    depService.addTarget(createDataSourceMethodTarget(ds.id));
-    depService.addTarget(createDataSourceCondTarget(ds.id));
+    depService.addTarget(createDataSourceTarget(ds, reactive({})));
+    depService.addTarget(createDataSourceMethodTarget(ds, reactive({})));
+    depService.addTarget(createDataSourceCondTarget(ds, reactive({})));
   };
 
   const rootChangeHandler = async (value: MApp | null, preValue?: MApp | null) => {
-    const nodeId = editorService.get('node')?.id || props.defaultSelected;
-    let node;
-    if (nodeId) {
-      node = editorService.getNodeById(nodeId);
-    }
-
-    if (node && node !== value) {
-      await editorService.select(node.id);
-    } else if (value?.items?.length) {
-      await editorService.select(value.items[0]);
-    } else if (value?.id) {
-      editorService.set('nodes', [value]);
-      editorService.set('parent', null);
-      editorService.set('page', null);
-    }
-
-    if (toRaw(value) !== toRaw(preValue)) {
-      emit('update:modelValue', value);
-    }
-
     if (!value) return;
 
     value.codeBlocks = value.codeBlocks || {};
@@ -314,11 +295,31 @@ export const initServiceEvents = (
       initDataSourceDepTarget(ds);
     });
 
-    if (value && Array.isArray(value.items)) {
+    if (Array.isArray(value.items)) {
       depService.collect(value.items, true);
     } else {
       depService.clear();
       delete value.dataSourceDeps;
+    }
+
+    const nodeId = editorService.get('node')?.id || props.defaultSelected;
+    let node;
+    if (nodeId) {
+      node = editorService.getNodeById(nodeId);
+    }
+
+    if (node && node !== value) {
+      await editorService.select(node.id);
+    } else if (value.items?.length) {
+      await editorService.select(value.items[0]);
+    } else if (value.id) {
+      editorService.set('nodes', [value]);
+      editorService.set('parent', null);
+      editorService.set('page', null);
+    }
+
+    if (toRaw(value) !== toRaw(preValue)) {
+      emit('update:modelValue', value);
     }
   };
 

@@ -45,7 +45,7 @@ interface AppOptionsConfig {
   ua?: string;
   config?: MApp;
   platform?: 'editor' | 'mobile' | 'tv' | 'pc';
-  jsEngine?: 'browser' | 'hippy';
+  jsEngine?: 'browser' | 'hippy' | 'nodejs';
   designWidth?: number;
   curPage?: Id;
   useMock?: boolean;
@@ -195,7 +195,7 @@ class App extends EventEmitter implements AppCore {
   }
 
   public setPage(id?: Id) {
-    const pageConfig = this.dsl?.items.find((page) => page.id === id);
+    const pageConfig = this.dsl?.items.find((page) => `${page.id}` === `${id}`);
 
     if (!pageConfig) {
       if (this.page) {
@@ -234,7 +234,7 @@ class App extends EventEmitter implements AppCore {
    */
   public getPage(id?: Id) {
     if (!id) return this.page;
-    if (this.page?.data.id === id) {
+    if (this.page && `${this.page.data.id}` === `${id}`) {
       return this.page;
     }
   }
@@ -285,11 +285,11 @@ class App extends EventEmitter implements AppCore {
    * @param eventConfig 代码动作的配置
    * @returns void
    */
-  public async codeActionHandler(eventConfig: CodeItemConfig) {
+  public async codeActionHandler(eventConfig: CodeItemConfig, args: any[]) {
     const { codeId = '', params = {} } = eventConfig;
     if (!codeId || isEmpty(this.codeDsl)) return;
     if (this.codeDsl![codeId] && typeof this.codeDsl![codeId]?.content === 'function') {
-      await this.codeDsl![codeId].content({ app: this, params });
+      await this.codeDsl![codeId].content({ app: this, params, eventParams: args });
     }
   }
 
@@ -322,7 +322,7 @@ class App extends EventEmitter implements AppCore {
     }
   }
 
-  public async dataSourceActionHandler(eventConfig: DataSourceItemConfig) {
+  public async dataSourceActionHandler(eventConfig: DataSourceItemConfig, args: any[]) {
     const { dataSourceMethod = [], params = {} } = eventConfig;
 
     const [id, methodName] = dataSourceMethod;
@@ -333,14 +333,14 @@ class App extends EventEmitter implements AppCore {
 
     if (!dataSource) return;
 
-    const methods = dataSource.getMethods() || [];
+    const methods = dataSource.methods || [];
 
     const method = methods.find((item) => item.name === methodName);
 
     if (!method) return;
 
     if (typeof method.content === 'function') {
-      await method.content({ app: this, params, dataSource });
+      await method.content({ app: this, params, dataSource, eventParams: args });
     }
   }
 
@@ -369,9 +369,9 @@ class App extends EventEmitter implements AppCore {
           await this.compActionHandler(actionItem as CompItemConfig, fromCpt, args);
         } else if (actionItem.actionType === ActionType.CODE) {
           // 执行代码块
-          await this.codeActionHandler(actionItem as CodeItemConfig);
+          await this.codeActionHandler(actionItem as CodeItemConfig, args);
         } else if (actionItem.actionType === ActionType.DATA_SOURCE) {
-          await this.dataSourceActionHandler(actionItem as DataSourceItemConfig);
+          await this.dataSourceActionHandler(actionItem as DataSourceItemConfig, args);
         }
       }
     } else {

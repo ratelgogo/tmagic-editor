@@ -21,10 +21,10 @@ import EventEmitter from 'events';
 import { cloneDeep, template } from 'lodash-es';
 
 import type { AppCore, DataSourceSchema, Id, MNode } from '@tmagic/schema';
-import { compiledCond, compiledNode } from '@tmagic/utils';
+import { compiledCond, compiledNode, DATA_SOURCE_FIELDS_SELECT_VALUE_PREFIX, isObject } from '@tmagic/utils';
 
 import { DataSource, HttpDataSource } from './data-sources';
-import type { DataSourceManagerData, DataSourceManagerOptions, HttpDataSourceSchema } from './types';
+import type { DataSourceManagerData, DataSourceManagerOptions } from './types';
 
 class DataSourceManager extends EventEmitter {
   private static dataSourceClassMap = new Map<string, typeof DataSource>();
@@ -42,42 +42,73 @@ class DataSourceManager extends EventEmitter {
   public dataSourceMap = new Map<string, DataSource>();
 
   public data: DataSourceManagerData = {};
+  public useMock?: boolean = false;
 
-  constructor({ app, useMock }: DataSourceManagerOptions) {
+  constructor({ app, useMock, initialData }: DataSourceManagerOptions) {
     super();
 
     this.app = app;
+    this.useMock = useMock;
+
+    if (initialData) {
+      this.data = initialData;
+    }
 
     app.dsl?.dataSources?.forEach((config) => {
-      this.addDataSource(config, useMock);
+      this.addDataSource(config);
     });
+  }
+
+  public async init() {
+    await Promise.all(
+      Array.from(this.dataSourceMap).map(async ([, ds]) => {
+        if (ds.isInit) {
+          return;
+        }
+
+        const beforeInit: ((...args: any[]) => any)[] = [];
+        const afterInit: ((...args: any[]) => any)[] = [];
+
+        ds.methods.forEach((method) => {
+          if (typeof method.content !== 'function') return;
+          if (method.timing === 'beforeInit') {
+            beforeInit.push(method.content);
+          }
+          if (method.timing === 'afterInit') {
+            afterInit.push(method.content);
+          }
+        });
+
+        for (const method of beforeInit) {
+          await method({ params: {}, dataSource: ds, app: this.app });
+        }
+
+        await ds.init();
+
+        for (const method of afterInit) {
+          await method({ params: {}, dataSource: ds, app: this.app });
+        }
+      }),
+    );
   }
 
   public get(id: string) {
     return this.dataSourceMap.get(id);
   }
 
-  public async addDataSource(config?: DataSourceSchema, useMock?: boolean) {
+  public async addDataSource(config?: DataSourceSchema) {
     if (!config) return;
 
-    let ds: DataSource;
-    if (config.type === 'http') {
-      ds = new HttpDataSource({
-        app: this.app,
-        schema: config as HttpDataSourceSchema,
-        request: this.app.request,
-        useMock,
-      });
-    } else {
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      const DataSourceClass = DataSourceManager.dataSourceClassMap.get(config.type) || DataSource;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    const DataSourceClass = DataSourceManager.dataSourceClassMap.get(config.type) || DataSource;
 
-      ds = new DataSourceClass({
-        app: this.app,
-        schema: config,
-        useMock,
-      });
-    }
+    const ds = new DataSourceClass({
+      app: this.app,
+      schema: config,
+      request: this.app.request,
+      useMock: this.useMock,
+      initialData: this.data[config.id],
+    });
 
     this.dataSourceMap.set(config.id, ds);
 
@@ -87,28 +118,7 @@ class DataSourceManager extends EventEmitter {
       this.setData(ds);
     });
 
-    const beforeInit: ((...args: any[]) => any)[] = [];
-    const afterInit: ((...args: any[]) => any)[] = [];
-
-    ds.getMethods().forEach((method) => {
-      if (typeof method.content !== 'function') return;
-      if (method.timing === 'beforeInit') {
-        beforeInit.push(method.content);
-      }
-      if (method.timing === 'afterInit') {
-        afterInit.push(method.content);
-      }
-    });
-
-    for (const method of beforeInit) {
-      await method({ params: {}, dataSource: ds, app: this.app });
-    }
-
-    await ds.init();
-
-    for (const method of afterInit) {
-      await method({ params: {}, dataSource: ds, app: this.app });
-    }
+    this.init();
   }
 
   public setData(ds: DataSource) {
@@ -128,9 +138,10 @@ class DataSourceManager extends EventEmitter {
       if (!ds) {
         return;
       }
-      ds.setFields(schema.fields);
-      ds.updateDefaultData();
-      this.data[ds.id] = ds.data;
+
+      this.removeDataSource(schema.id);
+
+      this.addDataSource(schema);
     });
   }
 
@@ -140,12 +151,45 @@ class DataSourceManager extends EventEmitter {
 
     return compiledNode(
       (value: any) => {
+        // 使用data-source-input等表单控件配置的字符串模板，如：`xxx${id.field}xxx`
         if (typeof value === 'string') {
           return template(value)(this.data);
         }
+
+        // 使用data-source-select等表单控件配置的数据源，如：{ isBindDataSource: true, dataSourceId: 'xxx'}
         if (value?.isBindDataSource && value.dataSourceId) {
           return this.data[value.dataSourceId];
         }
+
+        // 指定数据源的字符串模板，如：{ isBindDataSourceField: true, dataSourceId: 'id', template: `xxx${field}xxx`}
+        if (value?.isBindDataSourceField && value.dataSourceId && typeof value.template === 'string') {
+          return template(value.template)(this.data[value.dataSourceId]);
+        }
+
+        // 使用data-source-field-select等表单控件的数据源字段，如：[`${DATA_SOURCE_FIELDS_SELECT_VALUE_PREFIX}${id}`, 'field']
+        if (Array.isArray(value) && typeof value[0] === 'string') {
+          const [prefixId, ...fields] = value;
+          const prefixIndex = prefixId.indexOf(DATA_SOURCE_FIELDS_SELECT_VALUE_PREFIX);
+
+          if (prefixIndex > -1) {
+            const dsId = prefixId.substring(prefixIndex + DATA_SOURCE_FIELDS_SELECT_VALUE_PREFIX.length);
+
+            const data = this.data[dsId];
+
+            if (!data) return value;
+
+            return fields.reduce((accumulator, currentValue: any) => {
+              if (Array.isArray(accumulator)) return accumulator;
+
+              if (isObject(accumulator)) {
+                return accumulator[currentValue];
+              }
+
+              return '';
+            }, data);
+          }
+        }
+
         return value;
       },
       cloneDeep(node),
@@ -191,8 +235,10 @@ class DataSourceManager extends EventEmitter {
     this.dataSourceMap.forEach((ds) => {
       ds.destroy();
     });
-    this.dataSourceMap = new Map();
+    this.dataSourceMap.clear();
   }
 }
+
+DataSourceManager.registe('http', HttpDataSource);
 
 export default DataSourceManager;

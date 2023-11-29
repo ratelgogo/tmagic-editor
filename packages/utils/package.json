@@ -1,5 +1,5 @@
 {
-  "version": "1.3.0-beta.2",
+  "version": "1.3.4",
   "name": "@tmagic/utils",
   "type": "module",
   "main": "dist/tmagic-utils.umd.cjs",
@@ -7,6 +7,7 @@
   "types": "types/index.d.ts",
   "exports": {
     ".": {
+      "types": "./types/index.d.ts",
       "import": "./dist/tmagic-utils.js",
       "require": "./dist/tmagic-utils.umd.cjs"
     },
@@ -29,7 +30,7 @@
     "url": "https://github.com/Tencent/tmagic-editor.git"
   },
   "dependencies": {
-    "@tmagic/schema": "1.3.0-beta.2",
+    "@tmagic/schema": "1.3.4",
     "dayjs": "^1.11.4"
   },
   "peerDependencies": {

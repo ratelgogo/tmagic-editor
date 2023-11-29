@@ -18,6 +18,8 @@
 
 import { reactive } from 'vue';
 
+import { convertToNumber } from '@tmagic/utils';
+
 import editorService from '@editor/services/editor';
 import type { StageRect, UiState } from '@editor/type';
 
@@ -44,6 +46,8 @@ const state = reactive<UiState>({
   showRule: true,
   propsPanelSize: 'small',
   showAddPageButton: true,
+  floatBox: new Map(),
+  hideSlideBar: false,
 });
 
 class Ui extends BaseService {
@@ -84,15 +88,31 @@ class Ui extends BaseService {
     const { height, width } = stageContainerRect;
     if (!width || !height) return 1;
 
+    let stageWidth: number = convertToNumber(stageRect.width, width);
+    let stageHeight: number = convertToNumber(stageRect.height, height);
+
     // 30为标尺的大小
-    const stageWidth = stageRect.width + 30;
-    const stageHeight = stageRect.height + 30;
+    stageWidth = stageWidth + 30;
+    stageHeight = stageHeight + 30;
 
     if (width > stageWidth && height > stageHeight) {
       return 1;
     }
     // 60/80是为了不要让画布太过去贴住四周（这样好看些）
     return Math.min((width - 60) / stageWidth || 1, (height - 80) / stageHeight || 1);
+  }
+
+  public async setFloatBox(keys: string[]) {
+    const map = state.floatBox;
+    for (const key of keys) {
+      if (map.get(key)) continue;
+      map.set(key, {
+        status: false,
+        zIndex: 99,
+        top: 0,
+        left: 0,
+      });
+    }
   }
 
   public resetState() {

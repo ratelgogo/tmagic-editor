@@ -18,7 +18,7 @@
 import { HttpOptions, RequestFunction } from '@tmagic/schema';
 import { getValueByKeyPath } from '@tmagic/utils';
 
-import { HttpDataSourceOptions, HttpDataSourceSchema } from '@data-source/types';
+import { DataSourceOptions, HttpDataSourceSchema } from '@data-source/types';
 
 import DataSource from './Base';
 
@@ -67,46 +67,52 @@ const webRequest = async (options: HttpOptions) => {
  * @description 通过 http 请求获取数据
  */
 export default class HttpDataSource extends DataSource {
-  public type = 'http';
-
+  /** 是否正在发起请求 */
   public isLoading = false;
   public error?: {
     msg?: string;
     code?: string | number;
   };
   public schema: HttpDataSourceSchema;
+  /** 请求配置 */
   public httpOptions: HttpOptions;
 
-  private fetch?: RequestFunction;
-  private beforeRequest: ((...args: any[]) => any)[] = [];
-  private afterRequest: ((...args: any[]) => any)[] = [];
+  /** 请求函数 */
+  #fetch?: RequestFunction;
+  /** 请求前需要执行的函数队列 */
+  #beforeRequest: ((...args: any[]) => any)[] = [];
+  /** 请求后需要执行的函数队列 */
+  #afterRequest: ((...args: any[]) => any)[] = [];
 
-  constructor(options: HttpDataSourceOptions) {
-    const { options: httpOptions, ...dataSourceOptions } = options.schema;
+  #type = 'http';
 
-    super({
-      schema: dataSourceOptions,
-      app: options.app,
-    });
+  constructor(options: DataSourceOptions<HttpDataSourceSchema>) {
+    const { options: httpOptions } = options.schema;
+
+    super(options);
 
     this.schema = options.schema;
     this.httpOptions = httpOptions;
 
     if (typeof options.request === 'function') {
-      this.fetch = options.request;
+      this.#fetch = options.request;
     } else if (typeof globalThis.fetch === 'function') {
-      this.fetch = webRequest;
+      this.#fetch = webRequest;
     }
 
-    this.getMethods().forEach((method) => {
+    this.methods.forEach((method) => {
       if (typeof method.content !== 'function') return;
       if (method.timing === 'beforeRequest') {
-        this.beforeRequest.push(method.content);
+        this.#beforeRequest.push(method.content);
       }
       if (method.timing === 'afterRequest') {
-        this.afterRequest.push(method.content);
+        this.#afterRequest.push(method.content);
       }
     });
+  }
+
+  public get type() {
+    return this.#type;
   }
 
   public async init() {
@@ -117,21 +123,32 @@ export default class HttpDataSource extends DataSource {
     super.init();
   }
 
-  public async request(options: HttpOptions) {
+  public async request(options: Partial<HttpOptions> = {}) {
+    this.isLoading = true;
+
+    let reqOptions = {
+      ...this.httpOptions,
+      ...options,
+    };
+
     try {
-      for (const method of this.beforeRequest) {
-        await method({ options, params: {}, dataSource: this, app: this.app });
+      for (const method of this.#beforeRequest) {
+        await method({ options: reqOptions, params: {}, dataSource: this, app: this.app });
       }
 
-      const res = this.mockData
-        ? this.mockData.data
-        : await this.fetch?.({
-            ...this.httpOptions,
-            ...options,
-          });
+      if (typeof this.schema.beforeRequest === 'function') {
+        reqOptions = this.schema.beforeRequest(reqOptions, { app: this.app, dataSource: this });
+      }
 
-      for (const method of this.afterRequest) {
-        await method({ res, options, params: {}, dataSource: this, app: this.app });
+      // 注意：在编辑器中mockData不会为空，至少是默认值，不会发起请求
+      let res = this.mockData ? this.mockData : await this.#fetch?.(reqOptions);
+
+      for (const method of this.#afterRequest) {
+        await method({ res, options: reqOptions, params: {}, dataSource: this, app: this.app });
+      }
+
+      if (typeof this.schema.afterResponse === 'function') {
+        res = this.schema.afterResponse(res, { app: this.app, dataSource: this, options: reqOptions });
       }
 
       if (this.schema.responseOptions?.dataPath) {
@@ -149,6 +166,8 @@ export default class HttpDataSource extends DataSource {
 
       this.emit('error', error);
     }
+
+    this.isLoading = false;
   }
 
   public get(options: Partial<HttpOptions> & { url: string }) {

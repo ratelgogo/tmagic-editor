@@ -41,6 +41,60 @@ import type { StorageService } from './services/storage';
 import type { UiService } from './services/ui';
 import type { UndoRedo } from './utils/undo-redo';
 
+export interface FrameworkSlots {
+  header(props: {}): any;
+  nav(props: {}): any;
+  'content-before'(props: {}): any;
+  'content-after'(props: {}): any;
+  'src-code'(props: {}): any;
+  sidebar(props: {}): any;
+  empty(props: {}): any;
+  workspace(props: {}): any;
+  'props-panel'(props: {}): any;
+  'footer'(props: {}): any;
+}
+
+export interface WorkspaceSlots {
+  stage(props: {}): any;
+  'workspace-content'(props: {}): any;
+  'page-bar-title'(props: { page: MPage }): any;
+  'page-bar-popover'(props: { page: MPage }): any;
+}
+
+export interface ComponentListPanelSlots {
+  'component-list-panel-header'(props: {}): any;
+  'component-list-item'(props: { component: ComponentItem }): any;
+}
+
+export interface CodeBlockListPanelSlots extends CodeBlockListSlots {
+  'code-block-panel-search'(props: {}): any;
+  'code-block-panel-header'(props: {}): any;
+}
+
+export interface CodeBlockListSlots {
+  'code-block-panel-tool'(props: { id: Id; data: CodeBlockContent }): any;
+}
+
+export interface DataSourceListSlots {
+  'data-source-panel-tool'(props: { data: any }): any;
+}
+
+export interface LayerNodeSlots {
+  'layer-node-content'(props: { data: MNode }): any;
+}
+
+export interface LayerPanelSlots extends LayerNodeSlots {
+  'layer-panel-header'(props: {}): any;
+  'layer-node-tool'(props: { data: MNode }): any;
+  'layer-node-content'(props: { data: MNode }): any;
+}
+
+export interface PropsPanelSlots {
+  'props-panel-header'(props: {}): any;
+}
+
+export type SidebarSlots = LayerPanelSlots & CodeBlockListPanelSlots & ComponentListPanelSlots & DataSourceListSlots;
+
 export type BeforeAdd = (config: MNode, parent: MContainer) => Promise<MNode> | MNode;
 export type GetConfig = (config: FormConfig) => Promise<FormConfig> | FormConfig;
 
@@ -119,8 +173,8 @@ export interface GetColumnWidth {
 }
 
 export interface StageRect {
-  width: number;
-  height: number;
+  width: number | string;
+  height: number | string;
 }
 
 export interface UiState {
@@ -131,7 +185,10 @@ export interface UiState {
   /** 画布显示放大倍数，默认为 1 */
   zoom: number;
   /** 画布容器的宽高 */
-  stageContainerRect: StageRect;
+  stageContainerRect: {
+    width: number;
+    height: number;
+  };
   /** 画布顶层div的宽高，可用于改变画布的大小 */
   stageRect: StageRect;
   /** 编辑器列布局每一列的宽度，分为左中右三列 */
@@ -144,6 +201,20 @@ export interface UiState {
   propsPanelSize: 'large' | 'default' | 'small';
   /** 是否显示新增页面按钮 */
   showAddPageButton: boolean;
+
+  /** slide 拖拽悬浮窗 state */
+  floatBox: Map<
+    string,
+    {
+      status: boolean;
+      zIndex: number;
+      top: number;
+      left: number;
+    }
+  >;
+
+  /** 是否隐藏侧边栏 */
+  hideSlideBar: boolean;
 }
 
 export interface EditorNodeInfo {
@@ -264,6 +335,16 @@ export interface SideComponent extends MenuComponent {
   text: string;
   /** vue组件或url */
   icon: Component<{}, {}, any>;
+  /** slide 唯一标识 key */
+  $key: string;
+
+  /** 组件扩展参数 */
+  boxComponentConfig?: {
+    /** Vue3组件 */
+    component?: any;
+    /** 传入组件的props对象 */
+    props?: Record<string, any>;
+  };
 }
 
 /**
@@ -283,9 +364,17 @@ export interface SideBarData {
   items: SideItem[];
 }
 
+/**
+ * drawer 抽屉
+ * box 悬浮窗
+ */
+export type SlideType = 'drawer' | 'box';
+
 export interface ComponentItem {
   /** 显示文案 */
   text: string;
+  /** 详情，用于tooltip */
+  desc?: string;
   /** 组件类型 */
   type: string;
   /** Vue组件或url */
@@ -345,13 +434,6 @@ export type CodeState = {
   /** 为业务逻辑预留的不可删除的代码块列表，由业务逻辑维护（如代码块上线后不可删除） */
   undeletableList: Id[];
   paramsColConfig?: ColumnConfig;
-};
-
-export type HookData = {
-  /** 代码块id */
-  codeId: Id;
-  /** 参数 */
-  params?: object;
 };
 
 export type CodeRelation = {
@@ -419,6 +501,7 @@ export interface EventSelectConfig {
   name: string;
   type: 'event-select';
   src: 'datasource' | 'component';
+  labelWidth?: string;
   /** 事件名称表单配置 */
   eventNameConfig?: FormItem;
   /** 动作类型配置 */
@@ -491,6 +574,7 @@ export interface KeyBindingCacheItem {
 export interface CodeSelectColConfig {
   type: 'code-select-col';
   name: string;
+  text: string;
   labelWidth?: number | string;
   disabled?: boolean | FilterFunction;
   display?: boolean | FilterFunction;
@@ -499,6 +583,7 @@ export interface CodeSelectColConfig {
 export interface DataSourceMethodSelectConfig {
   type: 'data-source-method-select';
   name: string;
+  text: string;
   labelWidth?: number | string;
   disabled?: boolean | FilterFunction;
   display?: boolean | FilterFunction;
@@ -507,24 +592,46 @@ export interface DataSourceMethodSelectConfig {
 export interface DataSourceFieldSelectConfig {
   type: 'data-source-field-select';
   name: string;
+  value?: 'key' | 'value';
   labelWidth?: number | string;
   disabled?: boolean | FilterFunction;
   display?: boolean | FilterFunction;
 }
 
-export enum DepTargetType {
-  DEFAULT = 'default',
-  /** 代码块 */
-  CODE_BLOCK = 'code-block',
-  /** 数据源 */
-  DATA_SOURCE = 'data-source',
-  /** 数据源方法 */
-  DATA_SOURCE_METHOD = 'data-source-method',
-  /** 数据源条件 */
-  DATA_SOURCE_COND = 'data-source-cond',
+/** 可新增的数据源类型选项 */
+export interface DatasourceTypeOption {
+  /** 数据源类型 */
+  type: string;
+  /** 数据源名称 */
+  text: string;
 }
 
-export interface DatasourceTypeOption {
-  type: string;
-  text: string;
+/** 组件树节点状态 */
+export interface LayerNodeStatus {
+  /** 显隐 */
+  visible: boolean;
+  /** 展开子节点 */
+  expand: boolean;
+  /** 选中 */
+  selected: boolean;
+  /** 是否可拖拽 */
+  draggable: boolean;
+}
+
+/** 拖拽类型 */
+export enum DragType {
+  /** 从组件列表拖到画布 */
+  COMPONENT_LIST = 'component-list',
+  /** 拖动组件树节点 */
+  LAYER_TREE = 'layer-tree',
+}
+
+/** 当uiService.get('uiSelectMode')为true,点击组件（包括任何形式，组件树/画布）时触发的事件名 */
+export const UI_SELECT_MODE_EVENT_NAME = 'ui-select';
+
+export interface TreeNodeData {
+  id: Id;
+  name?: string;
+  items?: TreeNodeData[];
+  [key: string]: any;
 }
