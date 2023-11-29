@@ -1,6 +1,5 @@
-const Stage: React.FC = () => {
-  return <div></div>
-}
+const Stage = () => {
+  return <div></div>;
+};
 
 export default Stage;
-

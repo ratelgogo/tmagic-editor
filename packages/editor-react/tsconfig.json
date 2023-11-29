@@ -15,16 +15,27 @@
     "jsx": "react-jsx",
 
     /* Linting */
-    "strict": true,
+    "declaration": true,
+    "declarationDir": "types",
+    "strict": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "baseUrl": ".",
+    "baseUrl": "../../",
     "paths": {
       // 内部模块都指向 src/index.ts, 会有更好的代码跳转体验.
-      "@tmagic/*": ["../packages/*"]
-    }
+      "@editor/*": ["packages/editor-react/src/*"],
+      "@tmagic/*": ["packages/*/src"],
+      "@form/*": ["packages/form/src/*"],
+      "@data-source/*": ["packages/data-source/src/*"]
+    },
+    "types": [
+      "node",
+      "vite/client"
+    ]
   },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "exclude": [
+    "**/dist/**/*",
+    "**/node_modules/**/*"
+  ]
 }

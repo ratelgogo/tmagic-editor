@@ -16,6 +16,7 @@ module.exports = {
   rules: {
     "react-refresh/only-export-components": "off",
     "react/react-in-jsx-scope": "off",
+    "@typescript-eslint/ban-types": "off",
   },
   settings: {
     "import/parsers": {
